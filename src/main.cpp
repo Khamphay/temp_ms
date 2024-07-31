@@ -11,7 +11,7 @@
 #define thDO 7
 
 const char *fileName = "temp_log.txt";
-unsigned long drMills = 5000; // 60s;
+unsigned long drMills = 60000; // 60s;
 unsigned long lastMills = 0;
 char date[21];
 char buffer[60];
@@ -48,7 +48,7 @@ void showMenus()
   Serial.println("\t p: Show all menus.");
   Serial.println("\t r: Read data logs.");
   Serial.println("\t eY: Erase data logs.");
-  Serial.println("\t tddmmyyhhmmss: Set the RTC datetime.");
+  Serial.println("\t t: Set the RTC datetime.");
   Serial.println("\t d: Show the RTC datetime.");
   Serial.println("\t mXX: Set delay for record data log (XX as seconds).");
 }
@@ -73,7 +73,7 @@ void writeEraseAndHeader()
 
   file.println("DateTime, MaxTempC, MaxTemF, HTemp1, HTemp2");
   file.close();
-  // Serial.println("Erase data log done!");
+  Serial.println("Erase data log done!");
 }
 
 void saveData()
@@ -85,7 +85,9 @@ void saveData()
   float temp3F = thermocouple.readFahrenheit();
 
   sprintf(buffer, "%s,%s,%s,%s,%s", date, String(temp3C).c_str(), String(temp3F).c_str(), String(temp1).c_str(), String(temp2).c_str());
-  Serial.println(buffer);
+  if (Serial.available())
+    Serial.println(buffer);
+
   file = SD.open(fileName, FILE_WRITE);
   if (!file)
   {
@@ -112,6 +114,7 @@ void readData()
     Serial.write(file.read());
 
   file.close();
+  Serial.println("Read done!");
 }
 
 void setting()
@@ -155,11 +158,12 @@ void setting()
         char concat[2];
         concat[0] = c[1];
         concat[1] = c[2];
-        // char *mm = concat;
+
         int digi = atoi(concat);
         drMills = digi * 1000; // 60 s=1000ms
-        // Serial.println(digi);
-        // Serial.println(drMills);
+        Serial.print("Save data every: ");
+        Serial.print(digi);
+        Serial.println(" seconds");
       }
       break;
     }
