@@ -11,11 +11,14 @@
 #define thDO 7
 
 const char *fileName = "temp_log.txt";
+const char *fileSetting = "setting.txt";
 unsigned long drMills = 60000; // 60s;
 unsigned long lastMills = 0;
 char date[21];
-char buffer[60];
-boolean onSerial = false;
+char buffer[61];
+char c[14];
+
+bool onSerial = false;
 
 SdFat SD;
 File file;
@@ -42,22 +45,59 @@ void initSDCard()
   // Serial.println("Initailize SD Card done!");
 }
 
+void writeSetting(unsigned long ms)
+{
+  if (SD.exists(fileName))
+    SD.remove(fileSetting);
+
+  file = SD.open(fileSetting, FILE_WRITE);
+  if (!file)
+    return;
+
+  file.println(ms);
+  file.close();
+}
+
+void readSetting()
+{
+  if (!SD.exists(fileName))
+    return;
+
+  file = SD.open(fileSetting, FILE_READ);
+  if (!file)
+    return;
+
+  char ch;
+  String intval = "";
+  while (file.available())
+  {
+    ch = file.read();
+    if (ch == '\n')
+      break;
+
+    intval += ch;
+  }
+  if (intval != "")
+    drMills = atoi(intval.c_str());
+
+  file.close();
+}
+
 void showMenus()
 {
   Serial.println("\t\t* Menus * ");
   Serial.println("\t p: Show all menus.");
   Serial.println("\t r: Read data logs.");
   Serial.println("\t eY: Erase data logs.");
-  Serial.println("\t t: Set the RTC datetime.");
+  Serial.println("\t t: Set the RTC datetime (tDDMMYYhhmmss)");
   Serial.println("\t d: Show the RTC datetime.");
-  Serial.println("\t mXX: Set delay for record data log (XX as seconds).");
+  Serial.println("\t mSSS: Set delay for record data log (SS or SSS as seconds).");
 }
 
-char *getDateTime()
+void getDateTime()
 {
   DateTime now = rtc.now();
-  sprintf(date, "%02d/%02d/%02d %02d:%02d:%02d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second());
-  return date;
+  sprintf(date, "%02d/%02d/%d %02d:%02d:%02d", now.day(), now.month(), now.year(), now.hour(), now.minute(), now.second());
 }
 
 void writeEraseAndHeader()
@@ -85,8 +125,6 @@ void saveData()
   float temp3F = thermocouple.readFahrenheit();
 
   sprintf(buffer, "%s,%s,%s,%s,%s", date, String(temp3C).c_str(), String(temp3F).c_str(), String(temp1).c_str(), String(temp2).c_str());
-  if (Serial.available())
-    Serial.println(buffer);
 
   file = SD.open(fileName, FILE_WRITE);
   if (!file)
@@ -97,7 +135,8 @@ void saveData()
   }
   file.println(buffer);
   file.close();
-  // Serial.println("Write done!");
+
+  Serial.println(buffer);
 }
 
 void readData()
@@ -122,9 +161,9 @@ void setting()
   if (Serial.available() > 0)
   {
     onSerial = true;
-    String s = Serial.readString();
-    char c[sizeof(s)];
-    s.toCharArray(c, sizeof(s));
+    String s = Serial.readStringUntil('\n');
+    s.toCharArray(c, 14);
+    Serial.println(c);
     switch (c[0])
     {
     case 'p':
@@ -141,35 +180,48 @@ void setting()
     {
       if (c[1] == 'Y')
         writeEraseAndHeader();
-
       break;
     }
     case 't':
     {
-      rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+      char d[3] = {c[1], c[2], '\0'};
+      char m[3] = {c[3], c[4], '\0'};
+      char y[3] = {c[5], c[6], '\0'};
+      char h[3] = {c[7], c[8], '\0'};
+      char mn[3] = {c[9], c[10], '\0'};
+      char sc[3] = {c[11], c[12], '\0'};
+
+      rtc.adjust(DateTime(atoi(y), atoi(m), atoi(d), atoi(h), atoi(mn), atoi(sc)));
       delay(500);
-      Serial.println(getDateTime());
+      getDateTime();
+      Serial.println(date);
       break;
     }
     case 'm':
     {
-      if (sizeof(c) >= 3)
+      int digi = 60;
+      if (c[3] != '\0')
       {
-        char concat[2];
-        concat[0] = c[1];
-        concat[1] = c[2];
-
-        int digi = atoi(concat);
-        drMills = digi * 1000; // 60 s=1000ms
-        Serial.print("Save data every: ");
-        Serial.print(digi);
-        Serial.println(" seconds");
+        char concat[4] = {c[1], c[2], c[3], '\0'};
+        digi = atoi(concat);
       }
+      else if (c[3] == '\0')
+      {
+        char concat[3] = {c[1], c[2], '\0'};
+        digi = atoi(concat);
+      }
+
+      drMills = digi * 1000; // 60 s=1000ms
+      writeSetting(drMills);
+      Serial.print("Save data every ");
+      Serial.print(digi);
+      Serial.println(" seconds");
       break;
     }
     case 'd':
     {
-      Serial.println(getDateTime());
+      getDateTime();
+      Serial.println(date);
       break;
     }
     default:
@@ -195,13 +247,10 @@ void setup()
       delay(100);
   }
 
-  // TODO: Set default date (This line will clone the date from your computer date and set to RTC)
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  // rtc.start();
   delay(1000);
-  // Serial.println("Initailize RTC done!");
 
   initSDCard();
+  readSetting();
   if (Serial.available())
     showMenus();
 }
